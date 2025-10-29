@@ -1,199 +1,239 @@
 <!doctype html>
 <html lang="vi">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Check-in</title>
-  <script src="https://accounts.google.com/gsi/client" async defer></script>
   <style>
-    :root { --accent:#2563eb; --muted:#6b7280; }
-    body {
-      font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial;
-      margin:0; padding:20px; max-width:900px; margin:auto;
-      background:#f9fafb;
-    }
-    header { text-align:center; margin:18px 0 28px; }
-    h1 { margin:0; font-size:1.6rem; color:#111; }
-    p.lead { color:var(--muted); margin-top:6px; }
-    .card {
-      background:#fff; border:1px solid #e5e7eb; border-radius:10px;
-      padding:16px; box-shadow:0 2px 6px rgba(0,0,0,0.05);
-    }
-    #g_button { display:flex; justify-content:center; }
-    .small { font-size:0.9rem; color:var(--muted); }
-    .status { margin-top:14px; color:#333; font-size:0.95rem; }
-    .btn {
-      background:var(--accent); color:#fff; padding:10px 14px;
-      border:none; border-radius:8px; cursor:pointer; font-size:1rem;
-    }
-    .btn:disabled { background:#9ca3af; cursor:not-allowed; }
-    input[type="text"] {
-      padding:10px; border-radius:8px; border:1px solid #ccc;
-      width:100%; margin-top:8px; font-size:1rem;
-    }
-    .flex { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
-    @media(max-width:420px){ h1{font-size:1.3rem;} }
+    :root{--accent:#2563eb;--muted:#6b7280}
+    body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial;margin:0;padding:20px;max-width:900px;margin:auto;background:#f7fafc}
+    header{text-align:center;margin:18px 0 18px}
+    .card{background:#fff;border-radius:10px;padding:18px;border:1px solid #e6eef6;box-shadow:0 6px 18px rgba(16,24,40,0.04)}
+    h1{margin:0 0 6px;font-size:20px}
+    p.lead{color:var(--muted);margin:0 0 12px}
+    #signinBtn{display:inline-block;padding:10px 14px;border-radius:8px;background:#fff;border:1px solid #d1e3ff;color:#0b63d6;text-decoration:none}
+    .btn{padding:10px 14px;border-radius:8px;background:var(--accent);color:#fff;border:none;cursor:pointer}
+    input[type=text]{width:100%;padding:10px;border-radius:8px;border:1px solid #ddd;margin-top:8px}
+    .status{margin-top:12px;color:#111}
+    .hint{background:#fffbe6;border:1px solid #ffe8a0;padding:10px;border-radius:8px;margin-bottom:12px;color:#7a4c00}
   </style>
 </head>
 <body>
   <header>
-    <h1>Check In Petrolimex Thái Nguyên</h1>
-    <p class="lead">Đăng nhập bằng Google → Chỉnh tên (nếu cần) → Check in</p>
+    <h1>Check In</h1>
+    <p class="lead">Bạn sẽ được chuyển sang trang Google để đăng nhập, sau đó quay lại và có thể check-in.</p>
   </header>
 
-  <main>
-    <section class="card">
-      <div id="g_button"></div>
+  <div class="card" id="card">
+    <div id="beforeSignIn">
+      <div class="hint" id="webviewHint" style="display:none"></div>
 
-      <!-- Sau khi đăng nhập -->
-      <div id="afterLogin" style="display:none;margin-top:12px">
-        <div class="small">Email: <b id="userEmail"></b></div>
-        <label for="userName" class="small">Tên hiển thị:</label>
-        <input type="text" id="userName" placeholder="Nhập tên của bạn" />
-        <div style="margin-top:12px" class="flex">
-          <button id="btnCheckin" class="btn" disabled>Check in</button>
-        </div>
+      <!-- LINK redirect (không popup) -->
+      <a id="signinBtn" href="#" role="button">🔒 Đăng nhập bằng Google</a>
+
+      <div class="status" id="status">Trạng thái: Chưa đăng nhập</div>
+    </div>
+
+    <div id="afterSignIn" style="display:none">
+      <div class="small">Email: <b id="userEmail"></b></div>
+      <label for="userName" style="display:block;margin-top:8px;">Tên hiển thị (có thể sửa)</label>
+      <input id="userName" type="text" placeholder="Tên của bạn">
+      <div style="margin-top:12px">
+        <button id="btnCheckin" class="btn">Check in</button>
       </div>
-
-      <div id="status" class="status">Trạng thái: Đang tải...</div>
-    </section>
-  </main>
+      <div id="afterStatus" class="status"></div>
+    </div>
+  </div>
 
 <script>
-/* ====== CẤU HÌNH ====== */
-const CLIENT_ID = '1046897683218-h0snmi82rtm2ep06fkepr4bt8eo1k84i.apps.googleusercontent.com';
-const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwD686lDtOb4UtwvKDOncEUu55C7z1Ie02WD3urL41-iIzjFheRf9-fodDA5tkZhbQiMw/exec';
-/* ======================= */
+/* ========== CẤU HÌNH: THAY 3 CHỖ NÀY ========== */
+const CLIENT_ID = '1046897683218-h0snmi82rtm2ep06fkepr4bt8eo1k84i.apps.googleusercontent.com'; // <-- điền client id
+const REDIRECT_URI = 'https://anhdvh99.github.io/Check_In_Web/'; // <-- phải khớp với Authorized redirect URIs
+const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwD686lDtOb4UtwvKDOncEUu55C7z1Ie02WD3urL41-iIzjFheRf9-fodDA5tkZhbQiMw/exec'; // <-- webapp exec
+/* ============================================ */
 
-const statusEl = document.getElementById('status');
-
-function isInAppBrowser() {
+// Helpers
+function isInAppBrowser(){
   const ua = navigator.userAgent || '';
-  return /(FBAN|FBAV|Instagram|Line|Zalo|Messenger|MicroMessenger)/i.test(ua);
+  return /(FBAN|FBAV|Instagram|Line|Zalo|MicroMessenger|Messenger)/i.test(ua);
+}
+function randNonce(len=16){
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+  let s=''; for(let i=0;i<len;i++) s+=chars[Math.floor(Math.random()*chars.length)];
+  return s;
 }
 
-// Nếu mở trong Zalo, Messenger, FB → cố mở bằng Chrome
-if (isInAppBrowser()) {
-  const url = window.location.href;
-  if (/Android/i.test(navigator.userAgent)) {
-    window.location.href = 'intent:' + url + '#Intent;scheme=https;package=com.android.chrome;end';
-  } else if (/iPhone|iPad|iPod/i.test(navigator.userAgent)) {
-    alert('⚠️ Hãy mở trang này bằng Safari để đăng nhập Google.');
+// Build OAuth2 implicit (OIDC) URL to get id_token via redirect (response_type=id_token)
+// IMPORTANT: add REDIRECT_URI to Google Cloud OAuth 2.0 Client -> Authorized redirect URIs
+function buildAuthUrl(){
+  const nonce = randNonce(12);
+  sessionStorage.setItem('oidc_nonce', nonce);
+  const scope = encodeURIComponent('openid email profile');
+  const url = 'https://accounts.google.com/o/oauth2/v2/auth' +
+    '?client_id=' + encodeURIComponent(CLIENT_ID) +
+    '&redirect_uri=' + encodeURIComponent(REDIRECT_URI) +
+    '&response_type=id_token' + // return id_token in fragment
+    '&scope=' + scope +
+    '&nonce=' + encodeURIComponent(nonce) +
+    '&prompt=select_account'; // force account selection
+  return url;
+}
+
+// Parse fragment (#id_token=...)
+function parseHashParams() {
+  const hash = window.location.hash.substring(1);
+  if (!hash) return null;
+  const parts = hash.split('&').map(p => p.split('='));
+  const obj = {};
+  parts.forEach(p=>{ if(p[0]) obj[decodeURIComponent(p[0])] = decodeURIComponent(p[1]||''); });
+  return obj;
+}
+
+// Decode JWT payload (no verification client-side)
+function decodeJwtPayload(id_token){
+  try{
+    const payload = id_token.split('.')[1];
+    const json = atob(payload.replace(/-/g,'+').replace(/_/g,'/'));
+    return JSON.parse(decodeURIComponent(escape(json)));
+  }catch(e){ return null; }
+}
+
+// Remove hash from URL (clean)
+function clearUrlHash(){
+  if(history && history.replaceState){
+    history.replaceState('', document.title, window.location.pathname + window.location.search);
+  } else {
+    window.location.hash = '';
   }
 }
 
-// Google Sign-In
-window.onload = function () {
-  if (!window.google) {
-    statusEl.innerText = 'Google Sign-In chưa sẵn sàng.';
+// UI elements
+const signinBtn = document.getElementById('signinBtn');
+const statusEl = document.getElementById('status');
+const webviewHint = document.getElementById('webviewHint');
+const before = document.getElementById('beforeSignIn');
+const after = document.getElementById('afterSignIn');
+const userEmailEl = document.getElementById('userEmail');
+const userNameEl = document.getElementById('userName');
+const btnCheckin = document.getElementById('btnCheckin');
+const afterStatus = document.getElementById('afterStatus');
+
+// If user opened in app webview, show hint and attempt to open Chrome
+if(isInAppBrowser()){
+  webviewHint.style.display = 'block';
+  webviewHint.innerHTML = 'Bạn đang mở trong app (Zalo/Facebook...). Để đăng nhập Google, bấm "Mở trong trình duyệt" nếu có, hoặc bấm nút bên dưới để cố mở Chrome.';
+  // add a visible "Open in browser" link instead of auto-intent (auto-intent can be blocked)
+  const openLink = document.createElement('a'); openLink.href = window.location.href; openLink.target='_blank'; openLink.style.display='inline-block';
+  openLink.textContent = 'Mở trong trình duyệt';
+  openLink.style.marginLeft = '8px';
+  webviewHint.appendChild(openLink);
+}
+
+// Set sign-in link (redirect)
+signinBtn.href = buildAuthUrl();
+signinBtn.addEventListener('click', function(e){
+  // nothing special — it's a normal link that redirects
+});
+
+// On page load check if redirected from Google (has id_token in fragment)
+window.addEventListener('load', function(){
+  const hash = parseHashParams();
+  if(hash && hash.id_token){
+    const idt = hash.id_token;
+    const payload = decodeJwtPayload(idt);
+    // quick nonce check (optional)
+    const savedNonce = sessionStorage.getItem('oidc_nonce');
+    if(!payload){
+      statusEl.innerText = 'Không đọc được token trả về từ Google.';
+      clearUrlHash();
+      return;
+    }
+    // You may check payload.nonce === savedNonce for extra safety
+    // Save authorized user to sessionStorage
+    sessionStorage.setItem('user_id_token', idt);
+    sessionStorage.setItem('user_email', payload.email||'');
+    sessionStorage.setItem('user_name', payload.name||'');
+    clearUrlHash();
+  }
+
+  // If we have logged-in user info in sessionStorage -> show afterLogin UI
+  const email = sessionStorage.getItem('user_email');
+  const name = sessionStorage.getItem('user_name');
+  if(email){
+    showAfterLogin({email, name});
+  } else {
+    statusEl.innerText = 'Vui lòng đăng nhập bằng Google (không dùng popup).';
+    before.style.display = 'block';
+  }
+});
+
+// Show after sign-in UI
+function showAfterLogin(user){
+  before.style.display = 'none';
+  after.style.display = 'block';
+  userEmailEl.textContent = user.email;
+  userNameEl.value = user.name || '';
+  statusEl.textContent = 'Đã đăng nhập: ' + user.email;
+}
+
+// Create and submit POST form to Apps Script (navigational POST -> load result page)
+function submitPostToAppsScript(formData){
+  const form = document.createElement('form');
+  form.method = 'POST';
+  form.action = APPS_SCRIPT_URL;
+  // add inputs
+  for(const [k,v] of formData.entries()){
+    const inp = document.createElement('input');
+    inp.type = 'hidden'; inp.name = k; inp.value = v;
+    form.appendChild(inp);
+  }
+  document.body.appendChild(form);
+  form.submit(); // this will navigate to Apps Script response HTML
+}
+
+// On Check-in click -> get geolocation then submit navigational POST
+btnCheckin.addEventListener('click', function(){
+  btnCheckin.disabled = true;
+  afterStatus.textContent = 'Đang lấy vị trí...';
+
+  if(!navigator.geolocation){
+    afterStatus.textContent = 'Thiết bị không hỗ trợ định vị.';
+    btnCheckin.disabled = false;
     return;
   }
 
-  google.accounts.id.initialize({
-    client_id: CLIENT_ID,
-    callback: handleGoogleLogin,
-    ux_mode: 'popup'
-  });
-
-  google.accounts.id.renderButton(
-    document.getElementById('g_button'),
-    { theme: 'outline', size: 'large', text: 'signin_with', width: 260 }
-  );
-
-  statusEl.innerText = 'Vui lòng đăng nhập Google để tiếp tục.';
-};
-
-// Parse JWT
-function parseJwt(token) {
-  const base64Url = token.split('.')[1];
-  const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
-  const jsonPayload = decodeURIComponent(atob(base64).split('').map(c =>
-    '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2)
-  ).join(''));
-  return JSON.parse(jsonPayload);
-}
-
-// Khi đăng nhập thành công
-function handleGoogleLogin(resp) {
-  const user = parseJwt(resp.credential);
-  if (!user || !user.email) {
-    statusEl.innerText = 'Không thể lấy thông tin tài khoản.';
-    return;
-  }
-
-  document.getElementById('userEmail').innerText = user.email;
-  document.getElementById('userName').value = user.name || '';
-  document.getElementById('afterLogin').style.display = 'block';
-  statusEl.innerText = 'Đã đăng nhập: ' + user.email;
-
-  const btn = document.getElementById('btnCheckin');
-  btn.disabled = false;
-  btn.onclick = () => doCheckin(user);
-}
-
-// Lấy IP thật
-async function getIp() {
-  try {
-    const res = await fetch("https://api.ipify.org?format=json");
-    const data = await res.json();
-    return data.ip;
-  } catch {
-    return 'unknown';
-  }
-}
-
-// Gửi check-in
-async function doCheckin(user) {
-  const btn = document.getElementById('btnCheckin');
-  btn.disabled = true;
-  btn.innerText = 'Đang lấy vị trí...';
-
-  if (!navigator.geolocation) {
-    alert('Thiết bị không hỗ trợ định vị.');
-    return;
-  }
-
-  navigator.geolocation.getCurrentPosition(async pos => {
+  navigator.geolocation.getCurrentPosition(async function(pos){
     const lat = pos.coords.latitude;
     const lng = pos.coords.longitude;
-    const ip = await getIp();
-    const userAgent = navigator.userAgent;
-    const nameInput = document.getElementById('userName').value.trim() || user.name || '';
+    afterStatus.textContent = `Vị trí: ${lat.toFixed(6)}, ${lng.toFixed(6)} — Gửi...`;
 
-    statusEl.innerText = 'Đang gửi dữ liệu...';
+    // optional: get IP via ipify to detect device uniqueness
+    let ip = 'unknown';
+    try{ const r = await fetch('https://api.ipify.org?format=json'); ip = (await r.json()).ip || 'unknown'; }catch(e){}
 
-    const payload = new URLSearchParams({
-      email: user.email,
-      name: nameInput,
-      lat: lat.toString(),
-      lng: lng.toString(),
-      ip,
-      userAgent
-    });
+    const ua = navigator.userAgent;
+    const email = sessionStorage.getItem('user_email') || '';
+    const name = (userNameEl.value || '').trim();
 
-    try {
-      await fetch(APPS_SCRIPT_URL, {
-        method: 'POST',
-        body: payload,
-        mode: 'no-cors'
-      });
+    const data = new URLSearchParams();
+    data.append('email', email);
+    data.append('name', name);
+    data.append('lat', lat.toString());
+    data.append('lng', lng.toString());
+    data.append('ip', ip);
+    data.append('userAgent', ua);
+    // optional: send id_token to server (server can verify on its side)
+    const idtoken = sessionStorage.getItem('user_id_token');
+    if(idtoken) data.append('id_token', idtoken);
 
-      statusEl.innerHTML = `<span style="color:green;font-weight:600">✅ ${nameInput || user.email} đã check-in thành công!</span>`;
-      alert(`✅ ${nameInput || user.email} đã check-in thành công!`);
-      btn.innerText = 'Đã check-in';
-    } catch (err) {
-      console.error(err);
-      statusEl.innerHTML = `<span style="color:red">❌ Gửi dữ liệu thất bại. Vui lòng thử lại.</span>`;
-      alert('❌ Lỗi gửi dữ liệu. Vui lòng thử lại.');
-      btn.disabled = false;
-      btn.innerText = 'Check in';
-    }
-  }, err => {
-    alert('Không thể lấy vị trí: ' + err.message);
-    btn.disabled = false;
-    btn.innerText = 'Check in';
-  }, { enableHighAccuracy: true, timeout: 15000, maximumAge: 5000 });
-}
+    // navigational POST - will redirect to Apps Script response page (doPost returns HTML)
+    submitPostToAppsScript(data);
+
+  }, function(err){
+    afterStatus.textContent = 'Lấy vị trí thất bại: ' + (err.message||err.code);
+    btnCheckin.disabled = false;
+  }, { enableHighAccuracy:true, timeout:15000, maximumAge:5000 });
+});
 </script>
 </body>
 </html>
