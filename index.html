@@ -1,121 +1,102 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="vi">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Check-in bằng Gmail (Hosted)</title>
+  <title>Check-in bằng Gmail</title>
+
+  <!-- Google Identity Services -->
   <script src="https://accounts.google.com/gsi/client" async defer></script>
+
   <style>
-    body { font-family: Arial, sans-serif; text-align: center; padding: 40px; }
-    input, button { padding: 10px; font-size: 16px; margin: 8px 0; }
+    :root{--accent:#2563eb;--muted:#6b7280}
+    body{font-family:system-ui,-apple-system,Segoe UI,Roboto,"Helvetica Neue",Arial;margin:0;padding:20px;max-width:900px;margin-left:auto;margin-right:auto}
+    header{text-align:center;margin:18px 0 28px}
+    h1{margin:0;font-size:1.6rem}
+    p.lead{color:var(--muted);margin-top:6px}
+    .card{background:#fff;border:1px solid #e6e6e6;border-radius:10px;padding:16px;box-shadow:0 2px 6px rgba(2,6,23,0.03)}
+    #g_button{display:flex;justify-content:center}
+    .info{margin-top:12px;color:#111}
+    .status{margin-top:12px;color:var(--muted);font-size:0.95rem}
+    .hint{background:#fff7ed;border:1px solid #ffecb5;color:#7a4c00;padding:10px;border-radius:8px;margin-bottom:12px;display:none}
+    .btn{display:inline-block;background:var(--accent);color:#fff;padding:10px 14px;border-radius:8px;border:none;cursor:pointer}
+    .btn.ghost{background:transparent;color:var(--accent);border:1px solid var(--accent)}
+    .small{font-size:0.9rem;color:var(--muted)}
+    .flex{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+    @media (max-width:420px){h1{font-size:1.2rem}}
   </style>
 </head>
 <body>
-  <h2>Check-in bằng Gmail</h2>
-  <p>Đăng nhập bằng Google, cho phép lấy vị trí, hệ thống sẽ gửi dữ liệu lên Google Sheet.</p>
+  <header>
+    <h1>Check-in bằng Gmail</h1>
+    <p class="lead">Đăng nhập bằng Google → Cho phép vị trí → Hệ thống ghi vào Google Sheet</p>
+  </header>
 
-  <!-- Google Sign-in -->
-  <div id="g_id_onload"
-       data-client_id="1046897683218-h0snmi82rtm2ep06fkepr4bt8eo1k84i.apps.googleusercontent.com"
-       data-callback="handleCredentialResponse"
-       data-auto_prompt="false">
-  </div>
-  <div class="g_id_signin" data-type="standard"></div>
+  <main>
+    <div id="openHint" class="hint card">
+      <div id="openHintText">Bạn đang mở trang trong ứng dụng — để đăng nhập Google và bật vị trí, vui lòng mở trang bằng trình duyệt (Chrome/Safari).</div>
+      <div style="margin-top:10px" class="flex">
+        <button id="openInBrowser" class="btn">Mở bằng trình duyệt</button>
+        <button id="openInBrowserNewTab" class="btn ghost">Mở trong tab mới</button>
+      </div>
+    </div>
 
-  <div id="info" style="margin-top:20px"></div>
-  <div id="manualName" style="display:none; margin-top:10px;">
-    <input id="userName" placeholder="Nhập tên (nếu muốn sửa)" />
-  </div>
-  <div id="action" style="margin-top:12px;"></div>
-  <p id="status" style="color:green"></p>
+    <section class="card">
+      <div id="g_button"></div>
+      <div id="status" class="status">Trạng thái: Chưa đăng nhập</div>
+      <div id="info" class="info"></div>
+
+      <div id="manualFallback" style="display:none;margin-top:12px">
+        <hr style="margin:12px 0">
+        <div class="small">Nếu nút Google Sign-in không hoạt động (ví dụ trong app chat), bạn có thể nhập tạm:</div>
+        <div style="margin-top:8px" class="flex">
+          <input id="fallbackName" placeholder="Tên (bắt buộc khi dùng fallback)" style="padding:10px;border-radius:8px;border:1px solid #ddd;flex:1">
+          <input id="fallbackEmail" placeholder="Email (tuỳ chọn)" style="padding:10px;border-radius:8px;border:1px solid #ddd;flex:1">
+        </div>
+        <div style="margin-top:10px">
+          <button id="fallbackCheckin" class="btn">Check In (tạm)</button>
+        </div>
+      </div>
+    </section>
+  </main>
 
 <script>
-/* helper: parse JWT returned by GSI */
-function parseJwt(token) {
-  try {
-    const base64Url = token.split('.')[1];
-    const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
-    const jsonPayload = decodeURIComponent(atob(base64).split('').map(function(c) {
-      return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
-    }).join(''));
-    return JSON.parse(jsonPayload);
-  } catch (e) { return null; }
+/* ====== CẤU HÌNH: THAY 2 CHỖ NÀY ====== */
+const CLIENT_ID = '1046897683218-h0snmi82rtm2ep06fkepr4bt8eo1k84i.apps.googleusercontent.com'; // <-- thay bằng OAuth Client ID
+const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwD686lDtOb4UtwvKDOncEUu55C7z1Ie02WD3urL41-iIzjFheRf9-fodDA5tkZhbQiMw/exec'; // <-- thay bằng URL webapp /exec (Apps Script)
+/* ===================================== */
+
+function isInAppBrowser() {
+  const ua = navigator.userAgent || '';
+  return /(FBAN|FBAV|Instagram|Line|KAKAOTALK|Telegram|WhatsApp|MicroMessenger|Zalo)/i.test(ua);
 }
 
-function handleCredentialResponse(response) {
-  const payload = parseJwt(response.credential);
-  if (!payload) {
-    document.getElementById('status').innerText = 'Không lấy được thông tin tài khoản.';
+function tryOpenInBrowser(newTab=false) {
+  const url = window.location.href;
+  if (/Android/i.test(navigator.userAgent)) {
+    if (newTab) { window.open(url, '_blank'); return; }
+    // intent to open in Chrome (may fail gracefully)
+    window.location.href = 'intent:' + url + '#Intent;package=com.android.chrome;scheme=https;end';
     return;
   }
-
-  // user info from token
-  const email = payload.email || '';
-  const nameFromToken = payload.name || '';
-  document.getElementById('info').innerHTML =
-    `<b>${nameFromToken}</b> (${email}) đã đăng nhập.`;
-
-  // show optional name input if you want override
-  document.getElementById('manualName').style.display = 'block';
-
-  // create Check-in button
-  const actionDiv = document.getElementById('action');
-  actionDiv.innerHTML = '';
-  const btn = document.createElement('button');
-  btn.innerText = 'Check In';
-  btn.onclick = () => startCheckin(email, nameFromToken);
-  actionDiv.appendChild(btn);
+  // iOS and others: open new tab which usually opens in Safari
+  window.open(url, '_blank');
 }
 
-function startCheckin(email, nameFromToken) {
-  if (!navigator.geolocation) {
-    alert('Trình duyệt không hỗ trợ vị trí (geolocation).');
-    return;
+/* ---------- GSI init & render (mobile-friendly) ---------- */
+window.addEventListener('load', () => {
+  // if in-app webview -> show hint and fallback
+  if (isInAppBrowser()) {
+    document.getElementById('openHint').style.display = 'block';
+    document.getElementById('openInBrowser').onclick = () => tryOpenInBrowser(false);
+    document.getElementById('openInBrowserNewTab').onclick = () => tryOpenInBrowser(true);
+    document.getElementById('manualFallback').style.display = 'block';
   }
 
-  const manualName = document.getElementById('userName').value.trim();
-  const finalName = manualName || nameFromToken || '';
-
-  document.getElementById('status').innerText = 'Đang lấy vị trí...';
-
-  navigator.geolocation.getCurrentPosition(pos => {
-    const lat = pos.coords.latitude;
-    const lng = pos.coords.longitude;
-
-    // build invisible form and submit by POST (navigational POST avoids CORS)
-    const form = document.createElement('form');
-    form.method = 'POST';
-    form.action = 'https://script.google.com/macros/s/AKfycbwD686lDtOb4UtwvKDOncEUu55C7z1Ie02WD3urL41-iIzjFheRf9-fodDA5tkZhbQiMw/exec'; // thay bằng URL web app của bạn
-    form.style.display = 'none';
-
-    const addField = (n, v) => {
-      const i = document.createElement('input');
-      i.type = 'hidden';
-      i.name = n;
-      i.value = v;
-      form.appendChild(i);
-    };
-
-    addField('email', email);
-    addField('name', finalName);
-    addField('lat', lat);
-    addField('lng', lng);
-
-    document.body.appendChild(form);
-
-    // Option 1: submit and stay on same page (target a new tab)
-    // form.target = '_blank'; form.submit();
-
-    // Option 2: submit in same tab, Apps Script returns HTML success message
-    form.submit();
-
-    // show message (Apps Script can return its own HTML success page)
-    document.getElementById('status').innerText = 'Đã gửi dữ liệu. Nếu cần, cho phép mở cửa sổ mới.';
-  }, err => {
-    alert('Không lấy được vị trí: ' + (err.message || err.code));
-    document.getElementById('status').innerText = '';
-  }, { enableHighAccuracy: true, timeout: 10000 });
-}
-</script>
-</body>
-</html>
+  // wait for GSI client to load (script tag is async)
+  const maxWait = 3000; // ms
+  const start = Date.now();
+  (function waitForGSI(){
+    if (window.google && google.accounts && google.accounts.id) {
+      initGSI();
+    } else if (Date.
