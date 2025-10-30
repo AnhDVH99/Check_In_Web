@@ -1,9 +1,13 @@
 <!doctype html>
 <html lang="vi">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Check-in</title>
+
+  <!-- Google Identity Services (no-redirect flow) -->
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
+
   <style>
     :root{--accent:#2563eb;--muted:#6b7280}
     body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial;margin:0;padding:20px;max-width:900px;margin:auto;background:#f7fafc}
@@ -11,197 +15,188 @@
     .card{background:#fff;border-radius:10px;padding:18px;border:1px solid #e6eef6;box-shadow:0 6px 18px rgba(16,24,40,0.04)}
     h1{margin:0 0 6px;font-size:20px}
     p.lead{color:var(--muted);margin:0 0 12px}
-    #signinBtn{display:inline-block;padding:10px 14px;border-radius:8px;background:#fff;border:1px solid #d1e3ff;color:#0b63d6;text-decoration:none}
+    #g_button{display:flex;justify-content:center}
     .btn{padding:10px 14px;border-radius:8px;background:var(--accent);color:#fff;border:none;cursor:pointer}
     .btn.red{background:#ef4444}
     input[type=text]{width:100%;padding:10px;border-radius:8px;border:1px solid #ddd;margin-top:8px}
     .status{margin-top:12px;color:#111}
     .hint{background:#fffbe6;border:1px solid #ffe8a0;padding:10px;border-radius:8px;margin-bottom:12px;color:#7a4c00}
     .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+    @media (max-width:420px){h1{font-size:1.2rem}}
   </style>
 </head>
 <body>
   <header>
-    <h1>Check In</h1>
-    <p class="lead">Đăng nhập Google → Chỉnh tên (nếu cần) → Check-in (redirect trang kết quả)</p>
+    <h1>Check-in</h1>
+    <p class="lead">Đăng nhập bằng Google → Cho phép vị trí → Check-in</p>
   </header>
 
-  <div class="card" id="card">
-    <div id="beforeSignIn">
-      <div class="hint" id="webviewHint" style="display:none"></div>
-      <a id="signinBtn" href="#" role="button">🔒 Đăng nhập bằng Google</a>
-      <div class="status" id="status">Trạng thái: Chưa đăng nhập</div>
-    </div>
+  <main>
+    <div class="card">
+      <div id="g_button"></div>
 
-    <div id="afterSignIn" style="display:none">
-      <div class="row" style="justify-content:space-between">
-        <div class="small">Email: <b id="userEmail"></b></div>
-        <button id="btnSignOut" class="btn red">Đăng xuất</button>
+      <div id="status" class="status">Trạng thái: Chưa đăng nhập</div>
+
+      <div id="after" style="display:none;margin-top:12px;">
+        <div class="row" style="justify-content:space-between;align-items:center">
+          <div>Email: <b id="userEmail"></b></div>
+          <button id="btnSignOut" class="btn red">Đăng xuất</button>
+        </div>
+
+        <label style="display:block;margin-top:10px">Tên hiển thị (có thể sửa)</label>
+        <input id="userName" type="text" placeholder="Tên của bạn">
+
+        <div style="margin-top:12px"><button id="btnCheckin" class="btn">Check in</button></div>
+        <div id="afterStatus" class="status"></div>
       </div>
-      <label for="userName" style="display:block;margin-top:8px;">Tên hiển thị (có thể sửa)</label>
-      <input id="userName" type="text" placeholder="Tên của bạn">
-      <div style="margin-top:12px" class="row">
-        <button id="btnCheckin" class="btn">Check in</button>
+
+      <div id="webviewHint" class="hint" style="display:none;margin-top:12px;">
+        Bạn đang mở trong app (Zalo/Fb...). Nếu nút Google Sign-in không chạy, mở trang trong trình duyệt Chrome/Safari.
       </div>
-      <div id="afterStatus" class="status"></div>
     </div>
-  </div>
+  </main>
 
 <script>
-/* ===== CẤU HÌNH ===== */
+/* ====== Cấu hình: thay CLIENT_ID và APPS_SCRIPT_URL ====== */
 const CLIENT_ID = '1046897683218-h0snmi82rtm2ep06fkepr4bt8eo1k84i.apps.googleusercontent.com';
-const REDIRECT_URI = 'https://anhdvh99.github.io/Check_In_Web/';
 const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwD686lDtOb4UtwvKDOncEUu55C7z1Ie02WD3urL41-iIzjFheRf9-fodDA5tkZhbQiMw/exec';
-/* ==================== */
+/* ======================================================= */
 
 function isInAppBrowser(){
   const ua = navigator.userAgent || '';
   return /(FBAN|FBAV|Instagram|Line|Zalo|MicroMessenger|Messenger)/i.test(ua);
 }
-function rand(n=16){const c='ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';let s='';for(let i=0;i<n;i++)s+=c[Math.floor(Math.random()*c.length)];return s;}
-function buildAuthUrl(){
-  const nonce = rand(12);
-  const state = rand(12);
-  sessionStorage.setItem('oidc_nonce', nonce);
-  sessionStorage.setItem('oidc_state', state);
-  return 'https://accounts.google.com/o/oauth2/v2/auth'
-      + '?client_id=' + encodeURIComponent(CLIENT_ID)
-      + '&redirect_uri=' + encodeURIComponent(REDIRECT_URI)
-      + '&response_type=id_token'
-      + '&scope=' + encodeURIComponent('openid email profile')
-      + '&nonce=' + encodeURIComponent(nonce)
-      + '&state=' + encodeURIComponent(state)
-      + '&prompt=select_account';
-}
-function parseHashParams(){
-  const hash = window.location.hash.substring(1);
-  if(!hash) return null;
-  return Object.fromEntries(hash.split('&').map(p=>p.split('=').map(decodeURIComponent)));
-}
-function decodeJwtPayload(id_token){
-  try{
-    const json = atob(id_token.split('.')[1].replace(/-/g,'+').replace(/_/g,'/'));
-    return JSON.parse(decodeURIComponent(escape(json)));
-  }catch{ return null; }
-}
-function clearUrlHash(){
-  if(history && history.replaceState) history.replaceState('', document.title, window.location.pathname + window.location.search);
-  else window.location.hash='';
-}
 
-const signinBtn = document.getElementById('signinBtn');
-const statusEl = document.getElementById('status');
-const webviewHint = document.getElementById('webviewHint');
-const before = document.getElementById('beforeSignIn');
-const after = document.getElementById('afterSignIn');
-const userEmailEl = document.getElementById('userEmail');
-const userNameEl = document.getElementById('userName');
-const btnCheckin = document.getElementById('btnCheckin');
-const afterStatus = document.getElementById('afterStatus');
-const btnSignOut = document.getElementById('btnSignOut');
+/* Wait for GSI to load and render button */
+window.addEventListener('load', () => {
+  if (isInAppBrowser()) {
+    document.getElementById('webviewHint').style.display = 'block';
+  }
 
-/* WebView hint */
-if(isInAppBrowser()){
-  webviewHint.style.display='block';
-  webviewHint.innerHTML='Bạn đang mở trong ứng dụng (Zalo/Facebook...). Để đăng nhập Google, hãy mở bằng Chrome/Safari.';
-  const open = document.createElement('a'); open.href=window.location.href; open.target='_blank'; open.textContent='Mở trong trình duyệt'; open.style.marginLeft='8px';
-  webviewHint.appendChild(open);
-}
-
-/* Sign-in link */
-function setSigninLink(){ signinBtn.href = buildAuthUrl(); }
-setSigninLink();
-
-/* Load: xử lý redirect từ Google */
-window.addEventListener('load', ()=>{
-  const hash = parseHashParams();
-  if(hash && hash.id_token){
-    const payload = decodeJwtPayload(hash.id_token);
-    const savedNonce = sessionStorage.getItem('oidc_nonce');
-    if(!payload /*|| payload.nonce !== savedNonce*/){
-      statusEl.innerText = 'Không đọc được token trả về từ Google.';
-      clearUrlHash(); setSigninLink(); return;
+  // Poll for google.accounts.id
+  const start = Date.now();
+  (function waitGSI(){
+    if (window.google && google.accounts && google.accounts.id) {
+      initGSI();
+    } else if (Date.now() - start < 3000) {
+      setTimeout(waitGSI, 100);
+    } else {
+      document.getElementById('status').innerText = 'Google Sign-In chưa sẵn sàng. Thử tải lại hoặc mở bằng trình duyệt.';
     }
-    sessionStorage.setItem('user_id_token', hash.id_token);
-    sessionStorage.setItem('user_email', payload.email||'');
-    sessionStorage.setItem('user_name', payload.name||'');
-    sessionStorage.setItem('login_time', String(Date.now()));
-    clearUrlHash();
-  }
-  const email = sessionStorage.getItem('user_email');
-  const name = sessionStorage.getItem('user_name');
-  if(email){ showAfterLogin({email,name}); } else { statusEl.innerText='Vui lòng đăng nhập bằng Google (redirect).'; before.style.display='block'; }
+  })();
 });
 
-/* UI & actions */
-function showAfterLogin(u){
-  before.style.display='none';
-  after.style.display='block';
-  userEmailEl.textContent = u.email;
-  userNameEl.value = u.name || '';
-  statusEl.textContent = 'Đã đăng nhập: ' + u.email;
-}
-function submitPostToAppsScript(formData){
-  const form = document.createElement('form');
-  form.method='POST'; form.action=APPS_SCRIPT_URL;
-  for(const [k,v] of formData.entries()){
-    const inp=document.createElement('input'); inp.type='hidden'; inp.name=k; inp.value=v; form.appendChild(inp);
+function initGSI(){
+  if (!CLIENT_ID || CLIENT_ID.includes('YOUR_CLIENT_ID')) {
+    document.getElementById('status').innerText = 'Chưa cấu hình CLIENT_ID.';
+    return;
   }
-  document.body.appendChild(form);
-  form.submit();
+
+  google.accounts.id.initialize({
+    client_id: CLIENT_ID,
+    callback: handleCredentialResponse,
+    ux_mode: 'popup' // the library handles a safe popup; still no redirect needed
+  });
+
+  google.accounts.id.renderButton(
+    document.getElementById('g_button'),
+    { theme: 'outline', size: 'large', text: 'signin_with', width: 280 }
+  );
+
+  // optional: show prompt (commented to avoid annoyance)
+  // google.accounts.id.prompt();
+
+  document.getElementById('status').innerText = 'Trạng thái: Sẵn sàng đăng nhập';
 }
 
-signinBtn.addEventListener('click', ()=> {/* link redirect sẵn */});
+/* Parse JWT */
+function parseJwt(token) {
+  try{
+    const base64Url = token.split('.')[1];
+    const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+    const jsonPayload = decodeURIComponent(atob(base64).split('').map(function(c) {
+      return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
+    }).join(''));
+    return JSON.parse(jsonPayload);
+  }catch(e){ return null; }
+}
 
-btnCheckin.addEventListener('click', ()=>{
-  btnCheckin.disabled=true; afterStatus.textContent='Đang lấy vị trí...';
-  if(!navigator.geolocation){ afterStatus.textContent='Thiết bị không hỗ trợ định vị.'; btnCheckin.disabled=false; return; }
+/* On successful sign-in (GSI) */
+function handleCredentialResponse(response) {
+  const payload = parseJwt(response.credential);
+  if (!payload) { alert('Không lấy được thông tin từ Google.'); return; }
+  // Save id_token locally for optional server-side verify
+  sessionStorage.setItem('user_id_token', response.credential);
+  sessionStorage.setItem('user_email', payload.email || '');
+  sessionStorage.setItem('user_name', payload.name || '');
 
-  navigator.geolocation.getCurrentPosition(async pos=>{
-    const lat=pos.coords.latitude, lng=pos.coords.longitude;
-    afterStatus.textContent = `Vị trí: ${lat.toFixed(6)}, ${lng.toFixed(6)} — Gửi...`;
+  // show UI
+  document.getElementById('userEmail').innerText = payload.email || '';
+  document.getElementById('userName').value = payload.name || '';
+  document.getElementById('status').innerText = 'Đã đăng nhập: ' + (payload.email || '');
+  document.getElementById('after').style.display = 'block';
+  // optionally hide g_button to avoid confusion
+  document.getElementById('g_button').style.display = 'none';
+}
 
-    let ip='unknown'; try{ const r=await fetch('https://api.ipify.org?format=json'); ip=(await r.json()).ip||'unknown'; }catch{}
-    const ua = navigator.userAgent;
-    const email = sessionStorage.getItem('user_email')||'';
-    const name = (userNameEl.value||'').trim();
-    const idtoken = sessionStorage.getItem('user_id_token')||'';
-
-    const data = new URLSearchParams();
-    data.append('email', email);
-    data.append('name', name);
-    data.append('lat', lat.toString());
-    data.append('lng', lng.toString());
-    data.append('ip', ip);
-    data.append('userAgent', ua);
-    if(idtoken) data.append('id_token', idtoken);
-
-    submitPostToAppsScript(data);
-  }, err=>{
-    afterStatus.textContent='Lấy vị trí thất bại: ' + (err.message||err.code);
-    btnCheckin.disabled=false;
-  }, {enableHighAccuracy:true, timeout:15000, maximumAge:5000});
-});
-
-/* Đăng xuất: xoá session + cố thoát Google để lần sau chọn tài khoản */
-function signOutLocal(){
+/* Sign out: clear session + attempt sign out from Google (best-effort) */
+document.getElementById('btnSignOut').addEventListener('click', function(){
+  if (!confirm('Đăng xuất để dùng tài khoản khác?')) return;
   sessionStorage.removeItem('user_id_token');
   sessionStorage.removeItem('user_email');
   sessionStorage.removeItem('user_name');
-  sessionStorage.removeItem('login_time');
-  after.style.display='none'; before.style.display='block';
-  statusEl.textContent='Đã đăng xuất. Đăng nhập lại để tiếp tục.';
-  setSigninLink();
-}
-function signOutGoogle(){
-  try{
-    const ifr=document.createElement('iframe');
-    ifr.style.display='none'; ifr.src='https://accounts.google.com/Logout';
-    document.body.appendChild(ifr);
-    setTimeout(()=>{ document.body.removeChild(ifr); signOutLocal(); }, 1200);
-  }catch{ signOutLocal(); }
-}
-btnSignOut.addEventListener('click', (e)=>{ e.preventDefault(); if(confirm('Đăng xuất để dùng tài khoản khác?')) signOutGoogle(); });
+  // attempt remote logout (best-effort)
+  const ifr = document.createElement('iframe');
+  ifr.style.display = 'none';
+  ifr.src = 'https://accounts.google.com/logout';
+  document.body.appendChild(ifr);
+  setTimeout(()=>{ try{document.body.removeChild(ifr);}catch{}; location.reload(); }, 1000);
+});
+
+/* Check-in: get geolocation, get IP (ipify), then submit navigational POST to Apps Script */
+document.getElementById('btnCheckin').addEventListener('click', function(){
+  const btn = this;
+  btn.disabled = true;
+  const afterStatus = document.getElementById('afterStatus');
+  afterStatus.innerText = 'Đang lấy vị trí...';
+
+  if (!navigator.geolocation) {
+    afterStatus.innerText = 'Thiết bị không hỗ trợ vị trí.';
+    btn.disabled = false; return;
+  }
+
+  navigator.geolocation.getCurrentPosition(async pos => {
+    const lat = pos.coords.latitude, lng = pos.coords.longitude;
+    afterStatus.innerText = `Vị trí: ${lat.toFixed(6)}, ${lng.toFixed(6)} — Gửi dữ liệu...`;
+
+    // try get public IP (best-effort)
+    let ip = 'unknown';
+    try {
+      const r = await fetch('https://api.ipify.org?format=json');
+      const j = await r.json();
+      ip = j.ip || 'unknown';
+    } catch(e){ /* ignore */ }
+
+    const ua = navigator.userAgent;
+    const email = sessionStorage.getItem('user_email') || '';
+    const name = (document.getElementById('userName').value || '').trim();
+    const idtoken = sessionStorage.getItem('user_id_token') || '';
+
+    // build form & submit (navigational POST so Apps Script returns HTML)
+    const form = document.createElement('form');
+    form.method = 'POST'; form.action = APPS_SCRIPT_URL;
+    const add = (n,v) => { const i=document.createElement('input'); i.type='hidden'; i.name=n; i.value=v; form.appendChild(i); };
+    add('email', email); add('name', name); add('lat', lat); add('lng', lng);
+    add('ip', ip); add('userAgent', ua);
+    if (idtoken) add('id_token', idtoken);
+    document.body.appendChild(form);
+    form.submit();
+
+  }, err => {
+    afterStatus.innerText = 'Lấy vị trí thất bại: ' + (err.message || err.code);
+    btn.disabled = false;
+  }, { enableHighAccuracy: true, timeout: 15000, maximumAge: 5000 });
+});
 </script>
 </body>
 </html>
